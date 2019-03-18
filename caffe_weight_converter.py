@@ -1,18 +1,14 @@
 '''
 A tool to convert `.caffemodel` weights to Keras-compatible HDF5 files or to export them to a simpler Python dictionary structure for further processing.
-
 Copyright (C) 2018 Pierluigi Ferrari
-
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
 the Free Software Foundation, either version 3 of the License, or
 (at your option) any later version.
-
 This program is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY; without even the implied warranty of
 MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
-
 You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 '''
@@ -22,16 +18,19 @@ os.environ['GLOG_minloglevel'] = '2' # Prevents Caffe from printing sooo much st
 import caffe
 os.environ['GLOG_minloglevel'] = '0'
 import numpy as np
-import warnings
-import argparse
+import sys, warnings, argparse, gc
+from six.moves import xrange
 try:
-    import pickle
+    try:
+        from six.moves import cPickle as pickle
+    except:
+        import pickle
 except ImportError:
     warnings.warn("'pickle' module is missing. You can export the weights to an HDF5 file only.")
 try:
     import h5py
 except ImportError:
-    warning.warn("'h5py' module is missing. You can export the weights to a pickle file only.")
+    warnings.warn("'h5py' module is missing. You can export the weights to a pickle file only.")
 
 def convert_caffemodel_to_keras(output_filename,
                                 prototxt_filename,
@@ -44,14 +43,11 @@ def convert_caffemodel_to_keras(output_filename,
     Converts Caffe weights from the `.caffemodel` format to an HDF5 format that is
     compatible with Keras 2.x with TensorFlow backend. The Theano and CNTK backends
     are currently not supported.
-
     Note that this converter converts the weights only, not the model definition.
-
     The most painfree way to use this weight converter is to leave the
     `include_layers_without_weights` option deactivated and load the weights into
     an appropriate Keras model by setting `by_name = True` in the `Model.load_weights()`
     method.
-
     This converter can handle all layer types, but it is not guaranteed to perform
     the conversion correctly for unknown layer types. What this means concretely
     is that the converter can always extract the weights from a Caffe model and
@@ -71,23 +67,19 @@ def convert_caffemodel_to_keras(output_filename,
        transposed between Caffe and Keras with TensorFlow backend. Similar processing
        might be necessary for the weights of other (unknown) layer types to work
        correctly, so be aware of that.
-
     Of course any layer types that do not have trainable weights (such as Reshape,
     ReLU, Split, Concat, Permute, Flatten, Pooling etc.) won't cause any trouble
     because the converter does not care about them. The possible issues described
     above might occur only with unknown layer types that do have trainable weights.
-
     The currently supported (i.e. known) Caffe layer types that do have trainable
     weights are:
     - BatchNorm (i.e. BatchNorm layer followed by subsequent Scale layer)
     - Convolution
     - Deconvolution
     - InnerProduct
-
     If your model contains batch normalization layers, make sure that the names of
     the batch normalization layers in the Keras model are the same as the names of the
     corresponding 'BatchNorm' layers in the Caffe model, not the 'Scale' layers.
-
     Arguments:
         output_filename (str): The filename (full path, but excluding the file extension)
             under which to save the HDF5 file with the converted weights.
@@ -115,7 +107,6 @@ def convert_caffemodel_to_keras(output_filename,
             weights.
         verbose (bool, optional): If `True`, prints out the conversion status for
             every layer as well as some stats when the conversion is complete.
-
     Returns:
         None.
     '''
@@ -142,7 +133,7 @@ def convert_caffemodel_to_keras(output_filename,
     counter_unknown = 0
     counter_no_weights = 0
 
-    iterator = iter(range(len(caffe_weights_list)))
+    iterator = iter(xrange(len(caffe_weights_list)))
 
     for i in iterator:
         layer = caffe_weights_list[i]
@@ -170,7 +161,7 @@ def convert_caffemodel_to_keras(output_filename,
                     bias = layer['weights'][1]
                     weight_names.append('bias')
                 # Compose the extended weight names with layer name prefix.
-                extended_weight_names = np.array(['{}/{}:0'.format(layer_name, weight_names[k]).encode() for k in range(len(weight_names))])
+                extended_weight_names = np.array(['{}/{}:0'.format(layer_name, weight_names[k]).encode() for k in xrange(len(weight_names))])
                 # Create a group (i.e. folder) named after this layer.
                 group = out.create_group(layer_name)
                 # Create a weight names attribute for this group, which is just a list of the names of the weights
@@ -219,7 +210,7 @@ def convert_caffemodel_to_keras(output_filename,
                 weight_names.append('moving_mean') # It doesn't have to be a moving mean, but that's what Keras calls this parameter.
                 weight_names.append('moving_variance')  # It doesn't have to be a moving variance, but that's what Keras calls this parameter.
                 # Compose the extended weight names with layer name prefix.
-                extended_weight_names = np.array(['{}/{}:0'.format(layer_name, weight_names[k]).encode() for k in range(len(weight_names))])
+                extended_weight_names = np.array(['{}/{}:0'.format(layer_name, weight_names[k]).encode() for k in xrange(len(weight_names))])
                 # Create a group (i.e. folder) named after this layer.
                 group = out.create_group(layer_name)
                 # Create a weight names attribute for this group, which is just a list of the names of the weights
@@ -228,7 +219,7 @@ def convert_caffemodel_to_keras(output_filename,
                 # Create a subgroup (i.e. subfolder) in which to save the weights of this layer.
                 subgroup = group.create_group(layer_name)
                 # Create the actual weights datasets.
-                for j in range(len(weights)):
+                for j in xrange(len(weights)):
                     subgroup.create_dataset(name='{}:0'.format(weight_names[j]), data=weights[j])
                 # One last thing left to do: Append this layer's name to the global list of layer names.
                 layer_names.append(layer_name.encode())
@@ -236,9 +227,9 @@ def convert_caffemodel_to_keras(output_filename,
                     print("Converted weights for layer '{}' of type '{}'".format(layer_name, layer_type))
             elif (len(layer['weights']) > 0) and include_unknown_layer_types: # For all other (unsupported) layer types...
                 # Set the weight names for this layer type.
-                weight_names = ['weights_{}'.format(i) for i in range(len(layer['weights']))]
+                weight_names = ['weights_{}'.format(i) for i in xrange(len(layer['weights']))]
                 # Compose the extended weight names with layer name prefix.
-                extended_weight_names = np.array(['{}/{}:0'.format(layer_name, weight_names[k]).encode() for k in range(len(weight_names))])
+                extended_weight_names = np.array(['{}/{}:0'.format(layer_name, weight_names[k]).encode() for k in xrange(len(weight_names))])
                 # Create a group (i.e. folder) named after this layer.
                 group = out.create_group(layer_name)
                 # Create a weight names attribute for this group, which is just a list of the names of the weights
@@ -247,7 +238,7 @@ def convert_caffemodel_to_keras(output_filename,
                 # Create a subgroup (i.e. subfolder) in which to save the weights of this layer.
                 subgroup = group.create_group(layer_name)
                 # Create the actual weights datasets.
-                for j in range(len(layer['weights'])):
+                for j in xrange(len(layer['weights'])):
                     subgroup.create_dataset(name='{}:0'.format(weight_names[j]), data=layer['weights'][j])
                 # One last thing left to do: Append this layer's name to the global list of layer names.
                 layer_names.append(layer_name.encode())
@@ -287,6 +278,7 @@ def convert_caffemodel_to_keras(output_filename,
         print("{} \t were of an unknown layer type".format(counter_unknown))
         print("{} \t did not have any weights".format(counter_no_weights))
     print('File saved as {}'.format(out_name))
+    gc.collect();    gc.collect();    gc.collect()
 
 def convert_caffemodel_to_dict(prototxt_filename,
                                caffemodel_filename,
@@ -295,7 +287,6 @@ def convert_caffemodel_to_dict(prototxt_filename,
     '''
     Extracts the weights from a Caffe model into a simple structure of
     Python lists, dictionaries and Numpy arrays.
-
     Arguments:
         prototxt_filename (str): The full path to the `.prototxt` file that defines
             the Caffe model.
@@ -306,24 +297,21 @@ def convert_caffemodel_to_dict(prototxt_filename,
             then the extracted weights will not be saved to disk.
         verbose (bool, optional): If `True`, prints out the processing status for
             every layer.
-
     Returns:
         A list of dictionaries. Each dictionary contains the data for one layer of the
         model. The data contained in each dictionary can be accessed by the following keys:
-
             'name':    The name of the layer.
             'type':    The type of the layer, e.g. 'Convolution'.
             'weights': The weights of the layer as a list of Numpy arrays.
             'bottoms': The names and shapes of all inputs into the layer.
             'tops':    The names and shapes of all outputs from the layer.
-
         In case a layer has no weights, that layer's weights list will be empty.
     '''
     # Load the Caffe net and weights.
     net = caffe.Net(prototxt_filename, 1, weights=caffemodel_filename)
     # Store the weights and other information for each layer in this list.
     layer_list = []
-    for li in range(len(net.layers)): # For each layer in the net...
+    for li in xrange(len(net.layers)): # For each layer in the net...
         # ...store the weights and other relevant information in this dictionary.
         layer = {}
         # Store the layer name.
@@ -332,7 +320,7 @@ def convert_caffemodel_to_dict(prototxt_filename,
         layer['type'] = net.layers[li].type
         # Store the layer weights. In case the layer has no weights, this list will be empty.
         layer['weights'] = [net.layers[li].blobs[bi].data[...]
-                            for bi in range(len(net.layers[li].blobs))]
+                            for bi in xrange(len(net.layers[li].blobs))]
         # Store the names and shapes of each input to this layer (aka "bottom").
         layer['bottoms'] = [(net._blob_names[bi], net.blobs[net._blob_names[bi]].data.shape)
                              for bi in list(net._bottom_ids(li))]
@@ -354,6 +342,7 @@ def convert_caffemodel_to_dict(prototxt_filename,
         with open(out_name, 'wb') as f:
             pickle.dump(layer_list, f, protocol=pickle.HIGHEST_PROTOCOL)
         print('File saved as {}.'.format(out_name))
+    gc.collect();    gc.collect();    gc.collect()
 
     return layer_list
 
@@ -397,5 +386,6 @@ if __name__ == '__main__':
     parser.add_argument('-v', '--verbose', action='store_true', default=False, help="Prints out the conversion status for every layer.")
 
     args = parser.parse_args()
+    gc.collect();    gc.collect();    gc.collect()
 
-    main(args)
+main(args)
